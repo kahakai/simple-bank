@@ -59,13 +59,6 @@ func TestCreateAccountAPI(t *testing.T) {
 					Balance:  0,
 				}
 
-				account := db.Account{
-					ID:       account.ID,
-					Owner:    arg.Owner,
-					Currency: arg.Currency,
-					Balance:  arg.Balance,
-				}
-
 				store.EXPECT().
 					CreateAccount(gomock.Any(), gomock.Eq(arg)).
 					Times(1).
