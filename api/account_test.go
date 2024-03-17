@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	mock_db "github.com/kahakai/simple-bank/db/mock"
@@ -17,6 +18,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+func randomEmptyAccount() db.Account {
+	return db.Account{
+		ID:       util.RandomInt(1, 1000),
+		Owner:    util.RandomOwner(),
+		Balance:  0,
+		Currency: util.RandomCurrency(),
+	}
+}
 
 func randomAccount() db.Account {
 	return db.Account{
@@ -28,34 +38,34 @@ func randomAccount() db.Account {
 }
 
 func TestCreateAccountAPI(t *testing.T) {
-	req := createAccountRequest{
-		Owner:    util.RandomOwner(),
-		Currency: util.RandomCurrency(),
-	}
-
-	arg := db.CreateAccountParams{
-		Owner:    req.Owner,
-		Currency: req.Currency,
-		Balance:  0,
-	}
-
-	account := db.Account{
-		ID:       util.RandomInt(1, 1000),
-		Owner:    arg.Owner,
-		Currency: arg.Currency,
-		Balance:  arg.Balance,
-	}
+	account := randomEmptyAccount()
 
 	testCases := []struct {
-		name           string
-		accountRequest createAccountRequest
-		buildStubs     func(store *mock_db.MockStore)
-		checkResponse  func(t *testing.T, recorder *httptest.ResponseRecorder)
+		name          string
+		body          gin.H
+		buildStubs    func(store *mock_db.MockStore)
+		checkResponse func(t *testing.T, recorder *httptest.ResponseRecorder)
 	}{
 		{
-			name:           "OK",
-			accountRequest: req,
+			name: "OK",
+			body: gin.H{
+				"owner":    account.Owner,
+				"currency": account.Currency,
+			},
 			buildStubs: func(store *mock_db.MockStore) {
+				arg := db.CreateAccountParams{
+					Owner:    account.Owner,
+					Currency: account.Currency,
+					Balance:  0,
+				}
+
+				account := db.Account{
+					ID:       account.ID,
+					Owner:    arg.Owner,
+					Currency: arg.Currency,
+					Balance:  arg.Balance,
+				}
+
 				store.EXPECT().
 					CreateAccount(gomock.Any(), gomock.Eq(arg)).
 					Times(1).
@@ -67,39 +77,62 @@ func TestCreateAccountAPI(t *testing.T) {
 			},
 		},
 		{
-			name:           "Forbidden (foreign_key_violation)",
-			accountRequest: req,
+			name: "Forbidden (foreign_key_violation)",
+			body: gin.H{
+				"owner":    account.Owner,
+				"currency": account.Currency,
+			},
 			buildStubs: func(store *mock_db.MockStore) {
+				arg := db.CreateAccountParams{
+					Owner:    account.Owner,
+					Currency: account.Currency,
+					Balance:  0,
+				}
+
 				store.EXPECT().
 					CreateAccount(gomock.Any(), gomock.Eq(arg)).
 					Times(1).
-					Return(db.Account{}, &pgconn.PgError{
-						Code: "23503",
-					})
+					Return(db.Account{}, &pgconn.PgError{Code: "23503"})
 			},
 			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusForbidden, recorder.Code)
 			},
 		},
 		{
-			name:           "Forbidden (unique_violation)",
-			accountRequest: req,
+			name: "Forbidden (unique_violation)",
+			body: gin.H{
+				"owner":    account.Owner,
+				"currency": account.Currency,
+			},
 			buildStubs: func(store *mock_db.MockStore) {
+				arg := db.CreateAccountParams{
+					Owner:    account.Owner,
+					Currency: account.Currency,
+					Balance:  0,
+				}
+
 				store.EXPECT().
 					CreateAccount(gomock.Any(), gomock.Eq(arg)).
 					Times(1).
-					Return(db.Account{}, &pgconn.PgError{
-						Code: "23505",
-					})
+					Return(db.Account{}, &pgconn.PgError{Code: "23505"})
 			},
 			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusForbidden, recorder.Code)
 			},
 		},
 		{
-			name:           "InternalError",
-			accountRequest: req,
+			name: "InternalError",
+			body: gin.H{
+				"owner":    account.Owner,
+				"currency": account.Currency,
+			},
 			buildStubs: func(store *mock_db.MockStore) {
+				arg := db.CreateAccountParams{
+					Owner:    account.Owner,
+					Currency: account.Currency,
+					Balance:  0,
+				}
+
 				store.EXPECT().
 					CreateAccount(gomock.Any(), gomock.Eq(arg)).
 					Times(1).
@@ -124,13 +157,11 @@ func TestCreateAccountAPI(t *testing.T) {
 			server := NewServer(store)
 			recorder := httptest.NewRecorder()
 
-			body := tc.accountRequest
-			jsonBody, err := json.Marshal(body)
+			data, err := json.Marshal(tc.body)
 			require.NoError(t, err)
 
-			bodyReader := bytes.NewReader(jsonBody)
-
-			request, err := http.NewRequest(http.MethodPost, "/accounts", bodyReader)
+			url := "/accounts"
+			request, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
 			require.NoError(t, err)
 
 			server.router.ServeHTTP(recorder, request)
