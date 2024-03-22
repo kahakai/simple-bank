@@ -33,6 +33,27 @@ func createRandomAccount(t *testing.T) Account {
 	return account
 }
 
+func createUserAccount(t *testing.T, user User, currency string) Account {
+	arg := CreateAccountParams{
+		Owner:    user.Username,
+		Balance:  util.RandomMoney(),
+		Currency: currency,
+	}
+
+	account, err := testQueries.CreateAccount(context.Background(), arg)
+	require.NoError(t, err)
+	require.NotEmpty(t, account)
+
+	require.Equal(t, arg.Owner, account.Owner)
+	require.Equal(t, arg.Balance, account.Balance)
+	require.Equal(t, arg.Currency, account.Currency)
+
+	require.NotZero(t, account.ID)
+	require.NotZero(t, account.CreatedAt)
+
+	return account
+}
+
 func TestCreateAccount(t *testing.T) {
 	createRandomAccount(t)
 }
@@ -81,20 +102,33 @@ func TestDeleteAccount(t *testing.T) {
 }
 
 func TestListAccounts(t *testing.T) {
+	var users []User
+	currencies := []string{util.CAD, util.EUR, util.USD}
+
 	for i := 0; i < 10; i++ {
-		createRandomAccount(t)
+		user := createRandomUser(t)
+
+		for _, cur := range currencies {
+			createUserAccount(t, user, cur)
+		}
+
+		users = append(users, user)
 	}
 
-	arg := ListAccountsParams{
-		Limit:  5,
-		Offset: 5,
-	}
+	for _, user := range users {
+		arg := ListAccountsParams{
+			Owner:  user.Username,
+			Limit:  5,
+			Offset: 0,
+		}
 
-	accounts, err := testQueries.ListAccounts(context.Background(), arg)
-	require.NoError(t, err)
-	require.Len(t, accounts, 5)
+		accounts, err := testQueries.ListAccounts(context.Background(), arg)
+		require.NoError(t, err)
+		require.Len(t, accounts, len(currencies))
 
-	for _, account := range accounts {
-		require.NotEmpty(t, account)
+		for _, account := range accounts {
+			require.NotEmpty(t, account)
+			require.Equal(t, user.Username, account.Owner)
+		}
 	}
 }
